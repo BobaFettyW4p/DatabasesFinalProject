@@ -36,3 +36,7 @@
 - how do we track and store user interactions?
 - What are some potential bottlenecks in our system? What optimizations can we perform?
 
+
+## Week 1
+- [ ] Create full ERD for a relational database based on project specs - Matthew
+- [ ] devise non-relational schema to cover things like shopping cart, behavioral, etc - Robert
