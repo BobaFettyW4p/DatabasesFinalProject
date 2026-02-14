@@ -1,0 +1,6 @@
+02-14
+Matthew used this chat:
+
+https://claude.ai/share/9c12a00b-daac-4e5c-834f-c608fd24df39
+
+to brainstorm what the best way to store draw.io ERDs in git. As we are using git to store artifacts, the desire for a text-based way to store draw.io graphs was desired, but I was unsure what was considered best-practices. I uploaded the ERD in the recommended XML format to see if this is an effective way to share graphs. Overall, I believe this seems like a plausible solution, and am going to experiment with it over the course of the project to see what is most effective for us to collaborate. 
