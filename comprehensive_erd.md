@@ -1,6 +1,7 @@
 ---
 title: "Unified Multi-Database ERD"
 ---
+```mermaid
 erDiagram
 
     %% ═══════════════════════════════════════════════════════════
@@ -360,8 +361,9 @@ erDiagram
         int DurationSeconds "time spent viewing"
         datetime CreatedAt
     }
+```
 
-
+```mermaid
     flowchart LR
     subgraph MYSQL["MySQL"]
         M_User["User"]
@@ -419,3 +421,4 @@ erDiagram
     N_Viewed -. "(:User)" .-> M_User
     N_Viewed -. "(:Item)" .-> M_Item
     N_Viewed -. "SessionID" .-> R_Session
+```
