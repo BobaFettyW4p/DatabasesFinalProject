@@ -1,6 +1,3 @@
----
-title: "Unified Multi-Database ERD"
----
 ```mermaid
 erDiagram
 
