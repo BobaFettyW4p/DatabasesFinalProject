@@ -56,3 +56,16 @@ However, as the system evolved, the fully relational approach would have limitat
 - Behavioral analytics efficiency
 - Recommendation query complexity
 - High-frequency session/cart operations
+
+
+## [4.0.0] - 2026-02-18
+
+Component: Updated ERD
+
+Changes Made:
+
+- Updated our existing ERD to account for the non-relational schema design:
+  - each entity have been marked as being implemented in a specific database schema
+    - an entity implemented in MySQL is marked as being implemented in MySQL, a Neo4J is marked as being implemented in Neo4J, etc.
+- added an additional diagram containing a high level view of all separate databases
+  - each database is shown, along with all entities within it, as well as how those entities related to entities in other databases
