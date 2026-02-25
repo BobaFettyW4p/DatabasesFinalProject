@@ -57,7 +57,6 @@ However, as the system evolved, the fully relational approach would have limitat
 - Recommendation query complexity
 - High-frequency session/cart operations
 
-
 ## [4.0.0] - 2026-02-18
 
 Component: Updated ERD
@@ -69,3 +68,11 @@ Changes Made:
     - an entity implemented in MySQL is marked as being implemented in MySQL, a Neo4J is marked as being implemented in Neo4J, etc.
 - added an additional diagram containing a high level view of all separate databases
   - each database is shown, along with all entities within it, as well as how those entities related to entities in other databases
+
+## [5.0.0] - 2026-03-18
+
+Component: Broke diagrams into smaller pieces
+
+- Instead of having one large ERD, it is now broken up into multiple smaller diagrams for each database type. There is also a central diagram showing the relationships between each DB type.
+- Updated the Redis design to now sync with MySQL backend
+- ItemAttribute is moved to MongoDB
