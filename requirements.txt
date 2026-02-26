@@ -1,0 +1,5 @@
+psycopg2-binary>=2.9.9    # PostgreSQL
+pymongo>=4.6.0            # MongoDB
+redis>=5.0.1              # Redis
+neo4j>=5.14.0             # Neo4j
+faker>=22.0.0             # Synthetic data generation
