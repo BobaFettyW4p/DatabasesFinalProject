@@ -808,12 +808,12 @@ class MongoDBPopulator:
             self.db.product_attributes.insert_many(product_attrs)
             print(f"  {len(product_attrs)} product attributes inserted")
         
-        # 2. Create sample user events
+        # 2. Create sample user events (views, clicks, cart additions)
         print("Inserting sample user events...")
         user_events = []
-        num_events = min(50, len(pg_data['user_ids']) * 5)
+        num_view_events = min(50, len(pg_data['user_ids']) * 5)
         
-        for _ in range(num_events):
+        for _ in range(num_view_events):
             event = {
                 'user_id': f"user_{random.choice(pg_data['user_ids'])}",
                 'session_id': f"sess_{fake.uuid4()[:8]}",
@@ -828,9 +828,74 @@ class MongoDBPopulator:
             }
             user_events.append(event)
         
+        # 3. Create search events
+        print("Inserting sample search events...")
+        search_terms = [
+            'wireless headphones', 'bluetooth speaker', 'laptop', 'phone case',
+            'summer dress', 'jeans', 'sneakers', 'jacket', 't-shirt',
+            'coffee table', 'lamp', 'chair', 'rug', 'pillow',
+            'water bottle', 'yoga mat', 'dumbbells', 'running shoes'
+        ]
+        
+        # Time-based weights (more searches in evening)
+        time_weights = {
+            'night': (0, 6, 0.1),      # 12 AM - 6 AM: 10%
+            'morning': (6, 12, 0.2),   # 6 AM - 12 PM: 20%
+            'afternoon': (12, 18, 0.3), # 12 PM - 6 PM: 30%
+            'evening': (18, 24, 0.4)   # 6 PM - 12 AM: 40%
+        }
+        
+        # Generate searches for each user
+        num_search_events = min(45, len(pg_data['user_ids']) * 5)
+        
+        for _ in range(num_search_events):
+            # Select time period based on weights
+            time_period = random.choices(
+                list(time_weights.keys()),
+                weights=[w[2] for w in time_weights.values()]
+            )[0]
+            
+            hour_min, hour_max, _ = time_weights[time_period]
+            
+            # Create timestamp with specific hour range
+            days_ago = random.randint(1, 30)
+            search_time = datetime.now() - timedelta(
+                days=days_ago,
+                hours=24 - random.randint(hour_min, hour_max - 1),
+                minutes=random.randint(0, 59)
+            )
+            
+            # Some search terms are more popular (weighted selection)
+            popular_terms = search_terms[:6]  # First 6 are more popular
+            other_terms = search_terms[6:]
+            
+            if random.random() < 0.6:  # 60% chance of popular term
+                search_term = random.choice(popular_terms)
+            else:
+                search_term = random.choice(other_terms)
+            
+            search_event = {
+                'user_id': f"user_{random.choice(pg_data['user_ids'])}",
+                'session_id': f"sess_{fake.uuid4()[:8]}",
+                'event_type': 'search',
+                'event_data': {
+                    'search_query': search_term,
+                    'results_count': random.randint(5, 50),
+                    'filters_applied': random.choice([None, 'price', 'category', 'rating'])
+                },
+                'timestamp': search_time,
+                'device_type': random.choice(['laptop', 'mobile', 'tablet']),
+                'browser': random.choice(['Chrome', 'Firefox', 'Safari', 'Edge']),
+                'created_at': datetime.now()
+            }
+            user_events.append(search_event)
+        
         if user_events:
             self.db.user_events.insert_many(user_events)
-            print(f"  {len(user_events)} user events inserted")
+            view_count = sum(1 for e in user_events if e['event_type'] in ['view', 'click', 'add_to_cart'])
+            search_count = sum(1 for e in user_events if e['event_type'] == 'search')
+            print(f"  {view_count} user events inserted (views, clicks, cart)")
+            print(f"  {search_count} search events inserted")
         
         # 3. Create indexes
         print("Creating indexes...")
