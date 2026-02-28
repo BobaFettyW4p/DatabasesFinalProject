@@ -270,12 +270,6 @@ print(f"\nData Sources:")
 print(f"  - Redis (cache): {redis_count} products")
 print(f"  - MongoDB (fallback): {mongo_count} products")
 print(f"  - PostgreSQL (enrichment): {len(final_results)} products")
-print(f"\nPerformance:")
-if redis_count > 0:
-    print(f"  - Redis lookup: <10ms (fastest)")
-if mongo_count > 0:
-    print(f"  - MongoDB query: ~50ms")
-print(f"  - PostgreSQL joins: ~100ms")
 
 print("="*80)
 

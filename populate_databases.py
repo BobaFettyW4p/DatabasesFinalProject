@@ -3,8 +3,16 @@ E-Commerce Database Population Script
 Populates PostgreSQL, MongoDB, Redis, and Neo4j with synthetic data
 
 Usage:
-    python populate_databases.py --test     # Small test dataset (10 users, 20 products)
-    python populate_databases.py --full     # Full dataset (1000 users, 5000 products, etc.)
+    python populate_databases.py --test           # Small test dataset (10 users, 20 products)
+    python populate_databases.py --full           # Full dataset (1000 users, 5000 products)
+    python populate_databases.py --test --no-clear  # Test dataset without clearing existing data
+
+Features:
+    - Automatically clears all databases before populating (use --no-clear to skip)
+    - Generates realistic e-commerce data with proper relationships
+    - Creates orders, payments, shipping options automatically
+    - Populates search events, view events, and shopping carts
+    - Supports both test and production-scale datasets
 
 Requirements:
     pip install pymongo redis neo4j psycopg2-binary faker
@@ -24,8 +32,8 @@ from neo4j import GraphDatabase
 
 # Initialize Faker
 fake = Faker()
-Faker.seed(42)  # For reproducibility
-random.seed(42)
+Faker.seed(1)  # For reproducibility
+random.seed(1)
 
 
 # ============================================================================
@@ -128,15 +136,71 @@ class DatabaseConnections:
     
     def close_all(self):
         """Close all database connections"""
-        if self.pg_conn:
+        if self.pg_conn is not None:
             self.pg_conn.close()
-        if self.mongo_client:
+        if self.mongo_client is not None:
             self.mongo_client.close()
-        if self.redis_client:
+        if self.redis_client is not None:
             self.redis_client.close()
-        if self.neo4j_driver:
+        if self.neo4j_driver is not None:
             self.neo4j_driver.close()
         print("\nAll connections closed")
+    
+    def clear_all(self):
+        """Clear all existing data from databases"""
+        print("\n" + "="*60)
+        print("CLEARING EXISTING DATA")
+        print("="*60)
+        
+        # Clear PostgreSQL
+        if self.pg_conn is not None:
+            print("\nClearing PostgreSQL...")
+            try:
+                cursor = self.pg_conn.cursor()
+                cursor.execute("DROP SCHEMA public CASCADE;")
+                cursor.execute("CREATE SCHEMA public;")
+                cursor.execute("GRANT ALL ON SCHEMA public TO postgres;")
+                cursor.execute("GRANT ALL ON SCHEMA public TO public;")
+                self.pg_conn.commit()
+                cursor.close()
+                print("  PostgreSQL cleared")
+            except Exception as e:
+                print(f"  ✗ PostgreSQL clear failed: {e}")
+                self.pg_conn.rollback()
+        
+        # Clear MongoDB
+        if self.mongo_db is not None:
+            print("\nClearing MongoDB...")
+            try:
+                # Drop all collections
+                for collection_name in self.mongo_db.list_collection_names():
+                    self.mongo_db[collection_name].drop()
+                print("  MongoDB cleared")
+            except Exception as e:
+                print(f"  ✗ MongoDB clear failed: {e}")
+        
+        # Clear Redis
+        if self.redis_client is not None:
+            print("\nClearing Redis...")
+            try:
+                self.redis_client.flushdb()
+                print("  Redis cleared")
+            except Exception as e:
+                print(f"  ✗ Redis clear failed: {e}")
+        
+        # Clear Neo4j
+        if self.neo4j_driver is not None:
+            print("\nClearing Neo4j...")
+            try:
+                with self.neo4j_driver.session() as session:
+                    session.run("MATCH (n) DETACH DELETE n")
+                print("  Neo4j cleared")
+            except Exception as e:
+                print(f"  ✗ Neo4j clear failed: {e}")
+        
+        print("\n" + "="*60)
+        print("All databases cleared successfully!")
+        print("="*60)
 
 
 # ============================================================================
@@ -191,14 +255,25 @@ class DataGenerator:
         """Generate user data"""
         users = []
         for i in range(count):
-            user = {
-                'first_name': fake.first_name(),
-                'last_name': fake.last_name(),
-                'email': fake.unique.email(),
-                'username': fake.unique.user_name(),
-                'password_hash': fake.sha256(),
-                'created_at': fake.date_time_between(start_date='-2y', end_date='now')
-            }
+            # First user is always Sarah Johnson for testing consistency
+            if i == 0:
+                user = {
+                    'first_name': 'Sarah',
+                    'last_name': 'Johnson',
+                    'email': 'sarah.johnson@example.com',
+                    'username': 'sarah_johnson',
+                    'password_hash': fake.sha256(),
+                    'created_at': fake.date_time_between(start_date='-2y', end_date='now')
+                }
+            else:
+                user = {
+                    'first_name': fake.first_name(),
+                    'last_name': fake.last_name(),
+                    'email': fake.unique.email(),
+                    'username': fake.unique.user_name(),
+                    'password_hash': fake.sha256(),
+                    'created_at': fake.date_time_between(start_date='-2y', end_date='now')
+                }
             users.append(user)
         return users
     
@@ -754,6 +829,241 @@ class PostgreSQLPopulator:
             
             print(f"  {len(self.item_ids)} item-category relationships created")
             
+            # 6. Create shipping options, payment types, and payment methods
+            print("Creating shipping and payment options...")
+            
+            # Shipping options
+            cursor.execute("""
+                INSERT INTO ShippingOption (Name, Description, EstimatedDays, Rate, IsActive)
+                VALUES 
+                    ('Standard Shipping', '5-7 business days', '5-7 business days', 5.99, true),
+                    ('Express Shipping', '2-3 business days', '2-3 business days', 15.99, true),
+                    ('Overnight', 'Next business day', '1 business day', 29.99, true)
+                ON CONFLICT DO NOTHING
+                RETURNING ShippingOptionID
+            """)
+            shipping_option_ids = [row[0] for row in cursor.fetchall()]
+            
+            if not shipping_option_ids:
+                cursor.execute("SELECT ShippingOptionID FROM ShippingOption LIMIT 3")
+                shipping_option_ids = [row[0] for row in cursor.fetchall()]
+            
+            # Payment types
+            cursor.execute("""
+                INSERT INTO PaymentType (TypeName, Description, IsActive)
+                VALUES 
+                    ('Credit Card', 'Visa, Mastercard, Amex', true),
+                    ('Debit Card', 'Bank debit card', true),
+                    ('PayPal', 'PayPal account', true)
+                ON CONFLICT DO NOTHING
+                RETURNING PaymentTypeID
+            """)
+            payment_type_ids = [row[0] for row in cursor.fetchall()]
+            
+            if not payment_type_ids:
+                cursor.execute("SELECT PaymentTypeID FROM PaymentType LIMIT 3")
+                payment_type_ids = [row[0] for row in cursor.fetchall()]
+            
+            # Create payment method for each user
+            payment_method_ids = []
+            for user_id in self.user_ids[:num_users]:
+                cursor.execute("""
+                    INSERT INTO PaymentMethod (
+                        UserID, PaymentTypeID, AccountNumberLast4, CardType,
+                        ExpirationMonth, ExpirationYear, AccountHolderName,
+                        BillingAddressID, IsDefault, IsActive
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING PaymentMethodID
+                """, (user_id, random.choice(payment_type_ids), 
+                      str(random.randint(1000, 9999)),
+                      random.choice(['Visa', 'Mastercard', 'Amex']),
+                      '12', '2026', f'User {user_id}',
+                      self.address_ids[self.user_ids.index(user_id)],
+                      True, True))
+                payment_method_ids.append(cursor.fetchone()[0])
+            
+            print(f"  {len(shipping_option_ids)} shipping options created")
+            print(f"  {len(payment_type_ids)} payment types created")
+            print(f"  {len(payment_method_ids)} payment methods created")
+            
+            # 7. Create sample orders (2-3 per user)
+            print("Creating sample orders...")
+            
+            order_count = 0
+            order_item_count = 0
+            
+            for user_idx, user_id in enumerate(self.user_ids[:num_users]):
+                num_orders = random.randint(2, 3)
+                
+                for _ in range(num_orders):
+                    # Order dates in past 60 days
+                    days_ago = random.randint(1, 60)
+                    order_date = datetime.now() - timedelta(days=days_ago)
+                    
+                    # Order status
+                    status_options = [
+                        ('delivered', True, True),   # Has ship and delivery dates
+                        ('shipped', True, False),     # Has ship date only
+                        ('processing', False, False), # No dates yet
+                        ('pending', False, False)     # No dates yet
+                    ]
+                    
+                    status, has_ship, has_delivery = random.choice(status_options)
+                    
+                    ship_date = order_date + timedelta(days=2) if has_ship else None
+                    delivery_date = order_date + timedelta(days=5) if has_delivery else None
+                    
+                    # Select 1-3 items for order
+                    num_items_in_order = random.randint(1, 3)
+                    order_items = random.sample(list(zip(self.item_ids, products)), 
+                                               min(num_items_in_order, len(self.item_ids)))
+                    
+                    # Calculate totals
+                    subtotal = 0
+                    for item_id, product in order_items:
+                        quantity = random.randint(1, 2)
+                        subtotal += float(product['base_price']) * quantity
+                    
+                    tax = subtotal * 0.08  # 8% tax
+                    shipping_cost = random.choice([5.99, 15.99, 29.99])
+                    total = subtotal + tax + shipping_cost
+                    
+                    # Create order
+                    order_number = f"ORD-{fake.uuid4()[:8].upper()}"
+                    
+                    cursor.execute("""
+                        INSERT INTO "Order" (
+                            UserID, OrderNumber, Status, SubtotalAmount, TaxAmount,
+                            ShippingAmount, TotalAmount, ShippingAddressID, ShippingOptionID,
+                            PaymentMethodID, OrderDate, ActualShipDate, ActualDeliveryDate
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING OrderID
+                    """, (user_id, order_number, status, subtotal, tax, shipping_cost, total,
+                          self.address_ids[user_idx], random.choice(shipping_option_ids),
+                          payment_method_ids[user_idx], order_date, ship_date, delivery_date))
+                    
+                    order_id = cursor.fetchone()[0]
+                    order_count += 1
+                    
+                    # Insert order items
+                    for item_id, product in order_items:
+                        quantity = random.randint(1, 2)
+                        unit_price = float(product['base_price'])
+                        line_total = unit_price * quantity
+                        
+                        cursor.execute("""
+                            INSERT INTO OrderItem (
+                                OrderID, ItemID, Quantity, UnitPrice, LineTotal,
+                                ItemNameSnapshot
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """, (order_id, item_id, quantity, unit_price, line_total,
+                              product['name']))
+                        
+                        order_item_count += 1
+            
+            print(f"  {order_count} orders created")
+            print(f"  {order_item_count} order items created")
+            
+            # 8. Create sample returns (for delivered orders)
+            print("Creating sample returns...")
+            
+            return_count = 0
+            
+            # Get delivered orders
+            cursor.execute("""
+                SELECT o.OrderID, o.OrderDate
+                FROM "Order" o
+                WHERE o.Status = 'delivered'
+                  AND o.UserID IN %s
+                LIMIT 10
+            """, (tuple(self.user_ids[:num_users]),))
+            
+            delivered_orders = cursor.fetchall()
+            
+            if delivered_orders:
+                # Return reasons
+                return_reasons = [
+                    "Defective or damaged",
+                    "Wrong item received",
+                    "Not as described",
+                    "Changed mind",
+                    "Found better price elsewhere",
+                    "Ordered by mistake",
+                    "Poor quality",
+                    "Arrived too late"
+                ]
+                
+                # Create returns for some delivered orders
+                for order_id, order_date in delivered_orders[:5]:  # Only first 5
+                    # Get items from this order
+                    cursor.execute("""
+                        SELECT OrderItemID, ItemID, Quantity, UnitPrice, ItemNameSnapshot
+                        FROM OrderItem
+                        WHERE OrderID = %s
+                    """, (order_id,))
+                    
+                    order_items = cursor.fetchall()
+                    
+                    if not order_items:
+                        continue
+                    
+                    # Return 1 item from this order
+                    order_item_id, item_id, ordered_qty, unit_price, item_name = random.choice(order_items)
+                    
+                    # Return quantity (might be partial)
+                    return_qty = random.randint(1, ordered_qty)
+                    
+                    # Calculate refund
+                    refund_amount = float(unit_price) * return_qty
+                    
+                    # Restocking fee (0%, 10%, or 15%)
+                    restocking_fee_pct = random.choice([0, 0, 0, 0.10, 0.15])  # 60% no fee
+                    restocking_fee = refund_amount * restocking_fee_pct
+                    
+                    # Return status and refund status
+                    status_options = [
+                        ('completed', 'issued', True, True, True),      # Fully processed
+                        ('received', 'approved', True, True, False),    # Received, processing refund
+                        ('approved', 'pending', True, False, False),    # Approved, waiting for return
+                        ('requested', 'pending', False, False, False)   # Just requested
+                    ]
+                    
+                    return_status, refund_status, has_approved, has_received, has_refunded = random.choice(status_options)
+                    
+                    # Dates
+                    # Return requested 5-15 days after delivery
+                    days_after_delivery = random.randint(5, 15)
+                    requested_at = order_date + timedelta(days=days_after_delivery)
+                    
+                    approved_at = requested_at + timedelta(days=1) if has_approved else None
+                    received_at = approved_at + timedelta(days=3) if has_received and approved_at else None
+                    refunded_at = received_at + timedelta(days=2) if has_refunded and received_at else None
+                    
+                    # Return reason
+                    reason = random.choice(return_reasons)
+                    
+                    # Notes (sometimes)
+                    notes = fake.sentence() if random.random() > 0.6 else None
+                    
+                    # Insert return
+                    cursor.execute("""
+                        INSERT INTO ReturnItem (
+                            OrderID, OrderItemID, ItemID, ReturnReason, ReturnNotes,
+                            Status, Quantity, RefundAmount, RestockingFee, RefundStatus,
+                            RequestedAt, ApprovedAt, ReceivedAt, RefundedAt
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (order_id, order_item_id, item_id, reason, notes,
+                          return_status, return_qty, refund_amount, restocking_fee, refund_status,
+                          requested_at, approved_at, received_at, refunded_at))
+                    
+                    return_count += 1
+            
+            print(f"  {return_count} returns created")
+            
             # Commit transaction
             self.conn.commit()
             print("PostgreSQL population complete!")
@@ -985,9 +1295,70 @@ class RedisPopulator:
         
         print(f"  {hot_product_count} hot products cached")
         
+        # 3. Create shopping carts for first 3 users
+        print("Creating shopping carts...")
+        cart_count = min(3, len(pg_data['user_ids']))
+        
+        for i in range(cart_count):
+            user_id = pg_data['user_ids'][i]
+            session_token = f"sess_{fake.uuid4()[:8]}"
+            cart_id = f"cart_{user_id}_{int(datetime.now().timestamp())}"
+            device_type = random.choice(['laptop', 'mobile', 'tablet'])
+            
+            # Select 1-4 random products for cart
+            num_items_in_cart = random.randint(1, 4)
+            cart_items = []
+            total_amount = 0
+            total_items = 0
+            
+            for _ in range(num_items_in_cart):
+                # Pick random product
+                product_idx = random.randint(0, len(pg_data['products']) - 1)
+                product = pg_data['products'][product_idx]
+                item_id = pg_data['item_ids'][product_idx]
+                quantity = random.randint(1, 3)
+                
+                cart_item = {
+                    'item_id': f'item_{item_id}',
+                    'name': product['name'],
+                    'price': float(product['base_price']),
+                    'quantity': quantity,
+                    'subtotal': float(product['base_price']) * quantity
+                }
+                
+                cart_items.append(cart_item)
+                total_amount += cart_item['subtotal']
+                total_items += quantity
+            
+            # Store cart metadata
+            self.client.hset(f"cart:{user_id}:{session_token}", mapping={
+                'cart_id': cart_id,
+                'user_id': str(user_id),
+                'session_id': session_token,
+                'device_type': device_type,
+                'status': 'active',
+                'total_items': str(total_items),
+                'total_amount': str(total_amount),
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat()
+            })
+            self.client.expire(f"cart:{user_id}:{session_token}", 604800)  # 7 days
+            
+            # Store cart items
+            import json
+            for item in cart_items:
+                self.client.rpush(f"cart_items:{cart_id}", json.dumps(item))
+            self.client.expire(f"cart_items:{cart_id}", 604800)  # 7 days
+            
+            # Set active cart pointer
+            self.client.set(f"active_cart:{user_id}", cart_id, ex=604800)
+        
+        print(f"  {cart_count} shopping carts created")
+        
         return {
             'sessions': session_count,
-            'hot_products': hot_product_count
+            'hot_products': hot_product_count,
+            'carts': cart_count
         }
 
 
@@ -1099,6 +1470,7 @@ def main():
     parser = argparse.ArgumentParser(description='Populate e-commerce databases')
     parser.add_argument('--test', action='store_true', help='Generate small test dataset')
     parser.add_argument('--full', action='store_true', help='Generate full dataset')
+    parser.add_argument('--no-clear', action='store_true', help='Skip clearing existing data')
     args = parser.parse_args()
     
     if args.test:
@@ -1120,6 +1492,12 @@ def main():
     try:
         # Connect to all databases
         connections.connect_all()
+        
+        # Clear existing data (unless --no-clear flag is set)
+        if not args.no_clear:
+            connections.clear_all()
+        else:
+            print("\nSkipping database clear (--no-clear flag set)")
         
         # Create PostgreSQL schema
         create_postgresql_schema(connections.pg_conn)
