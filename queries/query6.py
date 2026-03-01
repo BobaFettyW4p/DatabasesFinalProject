@@ -1,6 +1,5 @@
 """
-Query 6 SIMPLE: User Search Analysis - Frequency and Time of Day
-Clean version without emojis
+Query 6: User Search Analysis - Frequency and Time of Day
 """
 
 import psycopg2

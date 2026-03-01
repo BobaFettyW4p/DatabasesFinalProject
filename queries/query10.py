@@ -1,6 +1,5 @@
 """
-Query 10 SIMPLE: Average Days Between Purchases
-Shows just the average - clean and simple
+Query 10: Average Days Between Purchases
 """
 
 import psycopg2

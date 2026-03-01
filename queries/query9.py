@@ -1,7 +1,5 @@
 """
 Query 9: User's Returned Items - Refund Status, Amount, Restocking Fees
-Shows all returns for a user with complete details
-Pure PostgreSQL query with JOINs across Order, OrderItem, and ReturnItem tables
 """
 
 import psycopg2

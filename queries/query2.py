@@ -1,6 +1,5 @@
 """
 Query 2: Retrieve last 5 products viewed by a user within past 6 months
-This demonstrates the hybrid approach using Redis (fast cache) with MongoDB fallback
 """
 
 import psycopg2

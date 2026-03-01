@@ -1,7 +1,5 @@
 """
 Query 8: Retrieve User's Orders with Complete Details
-Shows order IDs, items, payment methods, shipping options, and status
-Pure PostgreSQL query with multiple JOINs
 """
 
 import psycopg2

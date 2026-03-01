@@ -1,6 +1,5 @@
 """
 Query 1: Retrieve all products in "fashion" category with attributes
-Combines PostgreSQL (items/categories) with MongoDB (flexible attributes)
 """
 
 import psycopg2

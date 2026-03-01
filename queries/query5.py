@@ -1,6 +1,5 @@
 """
-Query 5 SIMPLE: Product View Counts (Popularity Ranking)
-Clean MongoDB aggregation with results
+Query 5: Product View Counts (Popularity Ranking)
 """
 
 import psycopg2

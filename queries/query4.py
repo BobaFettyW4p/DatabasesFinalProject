@@ -1,6 +1,5 @@
 """
 Query 4: Fashion Products (Blue OR Large)
-Shows clean SQL + MongoDB query with results
 """
 
 import psycopg2

@@ -1,6 +1,5 @@
 """
 Query 3: Low Stock Items (< 5 units)
-Straightforward version showing just the query and results
 """
 
 import psycopg2

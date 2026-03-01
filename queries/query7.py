@@ -1,6 +1,5 @@
 """
-Query 7 SIMPLE: Cart Information - Device Type, Items, Amount
-Clean version showing cart data from Redis and PostgreSQL
+Query 7: Cart Information - Device Type, Items, Amount
 """
 
 import psycopg2
