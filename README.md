@@ -1,5 +1,7 @@
 # DatabasesFinalProject
 
-Repo for my final project for MPCS 53001 - Databases
+This is the repo for our final project.
 
-Robert Wang
+Please refer to the diagrams folder for the diagrams for each component of our database, and the queries section contains the queries we used to test it.
+
+The scripts to populate the database with sample data are present in the root of this repo.
