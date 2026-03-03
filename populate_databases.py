@@ -936,7 +936,8 @@ class PostgreSQLPopulator:
                     shipping_cost = random.choice([5.99, 15.99, 29.99])
                     total = subtotal + tax + shipping_cost
                     
-                    # Create order
+                    # Create order with guaranteed unique order number
+                    # Use timestamp + counter for uniqueness at scale
                     order_number = f"ORD-{int(order_date.timestamp())}-{order_count:06d}"
                     
                     cursor.execute("""
@@ -1471,8 +1472,8 @@ class Neo4jPopulator:
     def __init__(self, driver):
         self.driver = driver
     
-    def populate(self, pg_data):
-        """Populate Neo4j with test data"""
+    def populate(self, pg_data, mongo_db, pg_conn):
+        """Populate Neo4j with test data including relationships"""
         print("\n=== Populating Neo4j ===")
         
         with self.driver.session() as session:
@@ -1498,7 +1499,7 @@ class Neo4jPopulator:
                     'name': f"User {uid}",
                     'created_at': datetime.now().isoformat()
                 }
-                for uid in pg_data['user_ids'][:min(100, len(pg_data['user_ids']))]  # First 100 users max
+                for uid in pg_data['user_ids'][:min(100, len(pg_data['user_ids']))]
             ]
             session.run(user_query, users=users_data)
             print(f"  {len(users_data):,} User nodes created")
@@ -1522,7 +1523,7 @@ class Neo4jPopulator:
                     'category': pg_data['products'][idx]['category_type'],
                     'price': float(pg_data['products'][idx]['base_price'])
                 }
-                for idx, pid in enumerate(pg_data['item_ids'][:min(500, len(pg_data['item_ids']))])  # First 500 products max
+                for idx, pid in enumerate(pg_data['item_ids'][:min(500, len(pg_data['item_ids']))])
             ]
             session.run(product_query, products=products_data)
             print(f"  {len(products_data):,} Product nodes created")
@@ -1553,13 +1554,215 @@ class Neo4jPopulator:
             session.run("CREATE CONSTRAINT product_id_unique IF NOT EXISTS FOR (p:Product) REQUIRE p.product_id IS UNIQUE")
             session.run("CREATE CONSTRAINT category_id_unique IF NOT EXISTS FOR (c:Category) REQUIRE c.category_id IS UNIQUE")
             print("  Constraints created")
+            
+            # 5. Create BELONGS_TO relationships (Product → Category)
+            print("Creating BELONGS_TO relationships...")
+            belongs_to_query = """
+            MATCH (p:Product), (c:Category)
+            WHERE p.category = c.name
+            CREATE (p)-[:BELONGS_TO]->(c)
+            """
+            result = session.run(belongs_to_query)
+            belongs_to_count = result.consume().counters.relationships_created
+            print(f"  {belongs_to_count:,} BELONGS_TO relationships created")
+            
+            # 6. Create PURCHASED relationships (User → Product)
+            print("Creating PURCHASED relationships...")
+            
+            # Get order data from PostgreSQL
+            cursor = pg_conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    o.UserID,
+                    oi.ItemID,
+                    o.OrderID,
+                    o.OrderDate,
+                    oi.Quantity,
+                    oi.LineTotal
+                FROM "Order" o
+                JOIN OrderItem oi ON o.OrderID = oi.OrderID
+                WHERE o.UserID IN %s
+                  AND oi.ItemID IN %s
+                ORDER BY o.OrderDate DESC
+                LIMIT 5000
+            """, (
+                tuple(pg_data['user_ids'][:100]),
+                tuple(pg_data['item_ids'][:500])
+            ))
+            
+            purchases = cursor.fetchall()
+            
+            if purchases:
+                purchased_data = [
+                    {
+                        'user_id': f"user_{user_id}",
+                        'product_id': f"item_{item_id}",
+                        'order_id': f"order_{order_id}",
+                        'purchased_at': order_date.isoformat(),
+                        'quantity': quantity,
+                        'total_price': float(line_total)
+                    }
+                    for user_id, item_id, order_id, order_date, quantity, line_total in purchases
+                ]
+                
+                # Batch insert relationships
+                batch_size = 1000
+                purchased_count = 0
+                
+                for i in range(0, len(purchased_data), batch_size):
+                    batch = purchased_data[i:i+batch_size]
+                    purchased_query = """
+                    UNWIND $purchases AS p
+                    MATCH (u:User {user_id: p.user_id})
+                    MATCH (pr:Product {product_id: p.product_id})
+                    CREATE (u)-[:PURCHASED {
+                        order_id: p.order_id,
+                        purchased_at: datetime(p.purchased_at),
+                        quantity: p.quantity,
+                        total_price: p.total_price
+                    }]->(pr)
+                    """
+                    result = session.run(purchased_query, purchases=batch)
+                    purchased_count += result.consume().counters.relationships_created
+                
+                print(f"  {purchased_count:,} PURCHASED relationships created")
+            else:
+                print(f"  ⚠ No purchase data available")
+            
+            # 7. Create VIEWED relationships (User → Product)
+            print("Creating VIEWED relationships...")
+            
+            # Get view events from MongoDB
+            view_events = list(mongo_db.user_events.find(
+                {
+                    'event_type': 'view',
+                    'user_id': {'$in': [f"user_{uid}" for uid in pg_data['user_ids'][:100]]},
+                    'event_data.product_id': {'$in': [f"item_{pid}" for pid in pg_data['item_ids'][:500]]}
+                },
+                limit=10000
+            ))
+            
+            if view_events:
+                viewed_data = [
+                    {
+                        'user_id': event['user_id'],
+                        'product_id': event['event_data']['product_id'],
+                        'session_id': event.get('session_id', 'unknown'),
+                        'viewed_at': event['timestamp'].isoformat() if isinstance(event['timestamp'], datetime) else event['timestamp'],
+                        'duration_seconds': event['event_data'].get('duration_seconds', 0)
+                    }
+                    for event in view_events
+                ]
+                
+                # Batch insert
+                viewed_count = 0
+                for i in range(0, len(viewed_data), batch_size):
+                    batch = viewed_data[i:i+batch_size]
+                    viewed_query = """
+                    UNWIND $views AS v
+                    MATCH (u:User {user_id: v.user_id})
+                    MATCH (p:Product {product_id: v.product_id})
+                    CREATE (u)-[:VIEWED {
+                        session_id: v.session_id,
+                        viewed_at: datetime(v.viewed_at),
+                        duration_seconds: v.duration_seconds
+                    }]->(p)
+                    """
+                    result = session.run(viewed_query, views=batch)
+                    viewed_count += result.consume().counters.relationships_created
+                
+                print(f"  {viewed_count:,} VIEWED relationships created")
+            else:
+                print(f"  ⚠ No view event data available")
+            
+            # 8. Create INTERESTED_IN relationships (User → Category)
+            print("Creating INTERESTED_IN relationships...")
+            
+            # Aggregate view/purchase counts by category for each user
+            interest_query = """
+            MATCH (u:User)-[r:VIEWED|PURCHASED]->(p:Product)-[:BELONGS_TO]->(c:Category)
+            WITH u, c, 
+                 COUNT(CASE WHEN type(r) = 'VIEWED' THEN 1 END) as view_count,
+                 COUNT(CASE WHEN type(r) = 'PURCHASED' THEN 1 END) as purchase_count
+            WHERE view_count > 0 OR purchase_count > 0
+            WITH u, c, view_count, purchase_count,
+                 (view_count + purchase_count * 5) as interest_score
+            CREATE (u)-[:INTERESTED_IN {
+                interest_score: interest_score,
+                view_count: view_count,
+                purchase_count: purchase_count
+            }]->(c)
+            """
+            result = session.run(interest_query)
+            interested_count = result.consume().counters.relationships_created
+            print(f"  {interested_count:,} INTERESTED_IN relationships created")
+            
+            # 9. Create PURCHASED_WITH relationships (Product → Product)
+            print("Creating PURCHASED_WITH relationships...")
+            
+            # Find products purchased together
+            cursor.execute("""
+                SELECT 
+                    oi1.ItemID as item1,
+                    oi2.ItemID as item2,
+                    COUNT(*) as count
+                FROM OrderItem oi1
+                JOIN OrderItem oi2 ON oi1.OrderID = oi2.OrderID
+                WHERE oi1.ItemID < oi2.ItemID
+                  AND oi1.ItemID IN %s
+                  AND oi2.ItemID IN %s
+                GROUP BY oi1.ItemID, oi2.ItemID
+                HAVING COUNT(*) >= 3
+                ORDER BY COUNT(*) DESC
+                LIMIT 1000
+            """, (
+                tuple(pg_data['item_ids'][:500]),
+                tuple(pg_data['item_ids'][:500])
+            ))
+            
+            pairs = cursor.fetchall()
+            
+            if pairs:
+                # Calculate confidence scores
+                purchased_with_data = [
+                    {
+                        'product1': f"item_{item1}",
+                        'product2': f"item_{item2}",
+                        'count': count,
+                        'confidence': min(count / 100.0, 1.0)  # Normalize to 0-1
+                    }
+                    for item1, item2, count in pairs
+                ]
+                
+                purchased_with_query = """
+                UNWIND $pairs AS pair
+                MATCH (p1:Product {product_id: pair.product1})
+                MATCH (p2:Product {product_id: pair.product2})
+                CREATE (p1)-[:PURCHASED_WITH {
+                    count: pair.count,
+                    confidence: pair.confidence,
+                    updated_at: datetime()
+                }]->(p2)
+                """
+                result = session.run(purchased_with_query, pairs=purchased_with_data)
+                purchased_with_count = result.consume().counters.relationships_created
+                print(f"  {purchased_with_count:,} PURCHASED_WITH relationships created")
+            else:
+                print(f"  ⚠ No co-purchase patterns found")
+            
+            cursor.close()
         
         print("Neo4j population complete!")
         
         return {
             'users': len(users_data),
             'products': len(products_data),
-            'categories': len(categories_data)
+            'categories': len(categories_data),
+            'belongs_to': belongs_to_count,
+            'purchased': purchased_count if purchases else 0,
+            'viewed': viewed_count if view_events else 0,
+            'interested_in': interested_count,
+            'purchased_with': purchased_with_count if pairs else 0
         }
 
 
@@ -1592,7 +1795,7 @@ def main():
         config = {
             'num_users': 1000,
             'num_products': 5000,
-            'orders_per_user': (100, 115),     # 100-115 orders per user = ~100,000 total
+            'orders_per_user': (95, 105),     # 95-105 orders per user = ~100,000 total
             'num_view_events': 400000,        # 400k view/click/cart events
             'num_search_events': 100000,      # 100k search events
             'view_cache_per_user': (50, 150)  # 50-150 cached views per user
@@ -1636,10 +1839,10 @@ def main():
         redis_populator = RedisPopulator(connections.redis_client)
         redis_data = redis_populator.populate(pg_data, config)
         
-        # Populate Neo4j
+        # Populate Neo4j (requires MongoDB and PostgreSQL connections)
         neo4j_populator = Neo4jPopulator(connections.neo4j_driver)
         neo4j_populator.generator = generator
-        neo4j_data = neo4j_populator.populate(pg_data)
+        neo4j_data = neo4j_populator.populate(pg_data, connections.mongo_db, connections.pg_conn)
         
         # Summary
         print("\n" + "="*60)
@@ -1663,6 +1866,11 @@ def main():
         print(f"  - User nodes: {neo4j_data['users']:,}")
         print(f"  - Product nodes: {neo4j_data['products']:,}")
         print(f"  - Category nodes: {neo4j_data['categories']}")
+        print(f"  - BELONGS_TO relationships: {neo4j_data['belongs_to']:,}")
+        print(f"  - PURCHASED relationships: {neo4j_data['purchased']:,}")
+        print(f"  - VIEWED relationships: {neo4j_data['viewed']:,}")
+        print(f"  - INTERESTED_IN relationships: {neo4j_data['interested_in']:,}")
+        print(f"  - PURCHASED_WITH relationships: {neo4j_data['purchased_with']:,}")
         
         print("\n" + "="*60)
         print("SCALE VERIFICATION")
