@@ -4,6 +4,7 @@ Query 9: User's Returned Items - Refund Status, Amount, Restocking Fees
 
 import psycopg2
 from datetime import datetime
+from timing_utils import end_query_timer, start_query_timer
 
 # ============================================================================
 # DATABASE CONNECTION
@@ -20,6 +21,8 @@ pg_conn = psycopg2.connect(
 print("="*80)
 print("QUERY 9: User's Returned Items - Refund Details")
 print("="*80)
+
+query_start_time = start_query_timer()
 
 # ============================================================================
 # STEP 1: Find the user
@@ -272,3 +275,4 @@ cursor.close()
 pg_conn.close()
 
 print("\nQuery complete!")
+end_query_timer(query_start_time, "Query 9")

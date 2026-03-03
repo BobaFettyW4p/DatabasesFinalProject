@@ -5,6 +5,7 @@ Query 7: Cart Information - Device Type, Items, Amount
 import psycopg2
 import redis
 import json
+from timing_utils import end_query_timer, start_query_timer
 
 # Connect
 pg_conn = psycopg2.connect(
@@ -19,6 +20,8 @@ redis_client = redis.Redis(
 print("="*80)
 print("QUERY 7: Shopping Cart Information")
 print("="*80)
+
+query_start_time = start_query_timer()
 
 # ============================================================================
 # REDIS - Active Carts
@@ -168,3 +171,4 @@ print("\n" + "="*80)
 cursor.close()
 pg_conn.close()
 redis_client.close()
+end_query_timer(query_start_time, "Query 7")

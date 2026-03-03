@@ -4,6 +4,7 @@ Query 4: Fashion Products (Blue OR Large)
 
 import psycopg2
 import pymongo
+from timing_utils import end_query_timer, start_query_timer
 
 # Connect
 pg_conn = psycopg2.connect(
@@ -17,6 +18,8 @@ mongo_db = mongo_client['ecommerce']
 print("="*80)
 print("QUERY 4: Fashion Products in Blue OR Large Size")
 print("="*80)
+
+query_start_time = start_query_timer()
 
 # ============================================================================
 # STEP 1: POSTGRESQL - Get Fashion Products
@@ -178,3 +181,4 @@ print("\n" + "="*80)
 cursor.close()
 pg_conn.close()
 mongo_client.close()
+end_query_timer(query_start_time, "Query 4")

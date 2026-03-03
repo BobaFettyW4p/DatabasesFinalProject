@@ -4,7 +4,7 @@ Query 1: Retrieve all products in "fashion" category with attributes
 
 import psycopg2
 import pymongo
-from pprint import pprint
+from timing_utils import end_query_timer, start_query_timer
 
 # Database connections
 pg_conn = psycopg2.connect(
@@ -21,6 +21,8 @@ mongo_db = mongo_client['ecommerce']
 print("="*80)
 print("QUERY 1: Fashion Products with Attributes")
 print("="*80)
+
+query_start_time = start_query_timer()
 
 # Step 1: Get fashion products from PostgreSQL
 print("\nStep 1: Querying PostgreSQL for fashion category items...")
@@ -41,8 +43,7 @@ query = """
     JOIN Category c ON ic.CategoryID = c.CategoryID
     WHERE c.CategoryName = 'Fashion'
       AND i.IsActive = true
-    ORDER BY i.Name
-    LIMIT 20;
+    ORDER BY i.Name;
 """
 
 pg_cursor.execute(query)
@@ -137,3 +138,4 @@ pg_conn.close()
 mongo_client.close()
 
 print("\nQuery complete!")
+end_query_timer(query_start_time, "Query 1")

@@ -4,6 +4,7 @@ Query 5: Product View Counts (Popularity Ranking)
 
 import psycopg2
 import pymongo
+from timing_utils import end_query_timer, start_query_timer
 
 # Connect
 pg_conn = psycopg2.connect(
@@ -17,6 +18,8 @@ mongo_db = mongo_client['ecommerce']
 print("="*80)
 print("QUERY 5: Products Ranked by View Count")
 print("="*80)
+
+query_start_time = start_query_timer()
 
 # ============================================================================
 # MONGODB AGGREGATION
@@ -146,7 +149,7 @@ if final_results:
         print(f"\nViews by Category:")
         for cat, views in sorted(category_views.items(), key=lambda x: x[1], reverse=True):
             pct = (views / total_views) * 100
-            print(f"  • {cat:<15}: {views:>4} views ({pct:>5.1f}%)")
+            print(f"  - {cat:<15}: {views:>4} views ({pct:>5.1f}%)")
 
 else:
     print("\nNo view data available")
@@ -158,3 +161,4 @@ print("\n" + "="*80)
 cursor.close()
 pg_conn.close()
 mongo_client.close()
+end_query_timer(query_start_time, "Query 5")

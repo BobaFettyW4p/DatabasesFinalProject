@@ -6,7 +6,7 @@ import psycopg2
 import pymongo
 import redis
 from datetime import datetime, timedelta
-import json
+from timing_utils import end_query_timer, start_query_timer
 
 # ============================================================================
 # DATABASE CONNECTIONS
@@ -33,6 +33,8 @@ redis_client = redis.Redis(
 print("="*80)
 print("QUERY 2: Last 5 Products Viewed by User (Past 6 Months)")
 print("="*80)
+
+query_start_time = start_query_timer()
 
 # ============================================================================
 # STEP 1: Find the user ID for "Sarah" (or use user_id directly)
@@ -279,3 +281,4 @@ mongo_client.close()
 redis_client.close()
 
 print("\nQuery complete!")
+end_query_timer(query_start_time, "Query 2")

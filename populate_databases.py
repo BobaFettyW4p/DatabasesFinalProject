@@ -3,9 +3,15 @@ E-Commerce Database Population Script
 Populates PostgreSQL, MongoDB, Redis, and Neo4j with synthetic data
 
 Usage:
-    python populate_databases.py --test           # Small test dataset (10 users, 20 products)
-    python populate_databases.py --full           # Full dataset (1000 users, 5000 products)
+    python populate_databases.py --test           # Small test dataset (10 users, 20 products, ~25 orders, ~100 events)
+    python populate_databases.py --full           # Full dataset (1000 users, 5000 products, ~100k orders, ~500k events)
     python populate_databases.py --test --no-clear  # Test dataset without clearing existing data
+
+Production Scale (--full mode):
+    - 1,000 users
+    - 5,000 products
+    - ~100,000 orders (100 per user)
+    - ~500,000 user events (400k views + 100k searches)
 
 Features:
     - Automatically clears all databases before populating (use --no-clear to skip)
@@ -13,6 +19,7 @@ Features:
     - Creates orders, payments, shipping options automatically
     - Populates search events, view events, and shopping carts
     - Supports both test and production-scale datasets
+    - Batch processing for large datasets with progress indicators
 
 Requirements:
     pip install pymongo redis neo4j psycopg2-binary faker
@@ -91,7 +98,7 @@ class DatabaseConnections:
             self.pg_conn.autocommit = False
             print("PostgreSQL connected")
         except Exception as e:
-            print(f"✗ PostgreSQL connection failed: {e}")
+            print(f"PostgreSQL connection failed: {e}")
             sys.exit(1)
         
         # MongoDB
@@ -103,7 +110,7 @@ class DatabaseConnections:
             self.mongo_db = self.mongo_client[self.config['mongodb']['database']]
             print("MongoDB connected")
         except Exception as e:
-            print(f"✗ MongoDB connection failed: {e}")
+            print(f"MongoDB connection failed: {e}")
             sys.exit(1)
         
         # Redis
@@ -117,7 +124,7 @@ class DatabaseConnections:
             self.redis_client.ping()
             print("Redis connected")
         except Exception as e:
-            print(f"✗ Redis connection failed: {e}")
+            print(f"Redis connection failed: {e}")
             sys.exit(1)
         
         # Neo4j
@@ -131,7 +138,7 @@ class DatabaseConnections:
                 session.run("RETURN 1")
             print("Neo4j connected")
         except Exception as e:
-            print(f"✗ Neo4j connection failed: {e}")
+            print(f"Neo4j connection failed: {e}")
             sys.exit(1)
     
     def close_all(self):
@@ -165,7 +172,7 @@ class DatabaseConnections:
                 cursor.close()
                 print("  PostgreSQL cleared")
             except Exception as e:
-                print(f"  ✗ PostgreSQL clear failed: {e}")
+                print(f"  PostgreSQL clear failed: {e}")
                 self.pg_conn.rollback()
         
         # Clear MongoDB
@@ -177,7 +184,7 @@ class DatabaseConnections:
                     self.mongo_db[collection_name].drop()
                 print("  MongoDB cleared")
             except Exception as e:
-                print(f"  ✗ MongoDB clear failed: {e}")
+                print(f"  MongoDB clear failed: {e}")
         
         # Clear Redis
         if self.redis_client is not None:
@@ -186,7 +193,7 @@ class DatabaseConnections:
                 self.redis_client.flushdb()
                 print("  Redis cleared")
             except Exception as e:
-                print(f"  ✗ Redis clear failed: {e}")
+                print(f"  Redis clear failed: {e}")
         
         # Clear Neo4j
         if self.neo4j_driver is not None:
@@ -196,7 +203,7 @@ class DatabaseConnections:
                     session.run("MATCH (n) DETACH DELETE n")
                 print("  Neo4j cleared")
             except Exception as e:
-                print(f"  ✗ Neo4j clear failed: {e}")
+                print(f"  Neo4j clear failed: {e}")
         
         print("\n" + "="*60)
         print("All databases cleared successfully!")
@@ -680,7 +687,7 @@ def create_postgresql_schema(conn):
         
     except Exception as e:
         conn.rollback()
-        print(f"✗ Error creating schema: {e}")
+        print(f"Error creating schema: {e}")
         raise
 
 
@@ -699,10 +706,14 @@ class PostgreSQLPopulator:
         self.category_ids = []
         self.item_ids = []
     
-    def populate(self, num_users=10, num_products=20):
+    def populate(self, config):
         """Populate PostgreSQL with test data"""
         print("\n=== Populating PostgreSQL ===")
         cursor = self.conn.cursor()
+        
+        num_users = config['num_users']
+        num_products = config['num_products']
+        orders_per_user = config['orders_per_user']
         
         try:
             # 1. Insert Addresses
@@ -720,7 +731,7 @@ class PostgreSQLPopulator:
                     addr['created_at']
                 ))
                 self.address_ids.append(cursor.fetchone()[0])
-            print(f"  {len(self.address_ids)} addresses inserted")
+            print(f"  {len(self.address_ids):,} addresses inserted")
             
             # 2. Insert Users
             print("Inserting users...")
@@ -737,7 +748,7 @@ class PostgreSQLPopulator:
                     user['created_at'], user['created_at']
                 ))
                 self.user_ids.append(cursor.fetchone()[0])
-            print(f"  {len(self.user_ids)} users inserted")
+            print(f"  {len(self.user_ids):,} users inserted")
             
             # 3. Insert Categories
             print("Inserting categories...")
@@ -764,7 +775,6 @@ class PostgreSQLPopulator:
             for cat in categories:
                 if cat['parent_category_id'] is not None:  # Child category
                     # Calculate correct parent ID
-                    # parent_category_id was set as idx+1, we need to map it to actual DB ID
                     parent_idx = cat['parent_category_id'] - 1
                     parent_name = list(parent_category_map.keys())[parent_idx] if parent_idx < len(parent_category_map) else None
                     actual_parent_id = parent_category_map.get(parent_name) if parent_name else None
@@ -774,7 +784,7 @@ class PostgreSQLPopulator:
                     ))
                     self.category_ids.append(cursor.fetchone()[0])
             
-            print(f"  {len(self.category_ids)} categories inserted")
+            print(f"  {len(self.category_ids):,} categories inserted")
             
             # 4. Insert Items
             print("Inserting items...")
@@ -791,7 +801,7 @@ class PostgreSQLPopulator:
                     product['created_at'], product['created_at']
                 ))
                 self.item_ids.append(cursor.fetchone()[0])
-            print(f"  {len(self.item_ids)} items inserted")
+            print(f"  {len(self.item_ids):,} items inserted")
             
             # 5. Link Items to Categories
             print("Linking items to categories...")
@@ -801,7 +811,6 @@ class PostgreSQLPopulator:
             """
             
             # Map category types to their database IDs
-            # Parent categories are the first 5 in category_ids list
             category_type_map = {
                 'Electronics': parent_category_map.get('Electronics'),
                 'Fashion': parent_category_map.get('Fashion'),
@@ -827,7 +836,7 @@ class PostgreSQLPopulator:
                         item_id, category_type_map['Electronics'], True, datetime.now()
                     ))
             
-            print(f"  {len(self.item_ids)} item-category relationships created")
+            print(f"  {len(self.item_ids):,} item-category relationships created")
             
             # 6. Create shipping options, payment types, and payment methods
             print("Creating shipping and payment options...")
@@ -885,52 +894,50 @@ class PostgreSQLPopulator:
             
             print(f"  {len(shipping_option_ids)} shipping options created")
             print(f"  {len(payment_type_ids)} payment types created")
-            print(f"  {len(payment_method_ids)} payment methods created")
+            print(f"  {len(payment_method_ids):,} payment methods created")
             
-            # 7. Create sample orders (2-3 per user)
+            # 7. Create sample orders (SCALED FOR PRODUCTION)
             print("Creating sample orders...")
             
             order_count = 0
             order_item_count = 0
             
             for user_idx, user_id in enumerate(self.user_ids[:num_users]):
-                num_orders = random.randint(2, 3)
+                # Number of orders per user (based on config)
+                num_orders = random.randint(orders_per_user[0], orders_per_user[1])
                 
                 for _ in range(num_orders):
-                    # Order dates in past 60 days
-                    days_ago = random.randint(1, 60)
+                    # Order dates in past 365 days (wider range for production scale)
+                    days_ago = random.randint(1, 365)
                     order_date = datetime.now() - timedelta(days=days_ago)
                     
-                    # Order status
+                    # Order status (weighted towards delivered: 60%)
                     status_options = [
                         ('delivered', True, True),   # Has ship and delivery dates
                         ('shipped', True, False),     # Has ship date only
                         ('processing', False, False), # No dates yet
                         ('pending', False, False)     # No dates yet
                     ]
-                    
-                    status, has_ship, has_delivery = random.choice(status_options)
+                    status_weights = [0.6, 0.2, 0.1, 0.1]
+                    status, has_ship, has_delivery = random.choices(status_options, weights=status_weights)[0]
                     
                     ship_date = order_date + timedelta(days=2) if has_ship else None
                     delivery_date = order_date + timedelta(days=5) if has_delivery else None
                     
-                    # Select 1-3 items for order
-                    num_items_in_order = random.randint(1, 3)
+                    # Select 1-5 items for order (more items per order for production)
+                    num_items_in_order = random.randint(1, 5)
                     order_items = random.sample(list(zip(self.item_ids, products)), 
                                                min(num_items_in_order, len(self.item_ids)))
                     
                     # Calculate totals
-                    subtotal = 0
-                    for item_id, product in order_items:
-                        quantity = random.randint(1, 2)
-                        subtotal += float(product['base_price']) * quantity
-                    
+                    subtotal = sum(float(product['base_price']) * random.randint(1, 3) 
+                                 for _, product in order_items)
                     tax = subtotal * 0.08  # 8% tax
                     shipping_cost = random.choice([5.99, 15.99, 29.99])
                     total = subtotal + tax + shipping_cost
                     
                     # Create order
-                    order_number = f"ORD-{fake.uuid4()[:8].upper()}"
+                    order_number = f"ORD-{int(order_date.timestamp())}-{order_count:06d}"
                     
                     cursor.execute("""
                         INSERT INTO "Order" (
@@ -949,7 +956,7 @@ class PostgreSQLPopulator:
                     
                     # Insert order items
                     for item_id, product in order_items:
-                        quantity = random.randint(1, 2)
+                        quantity = random.randint(1, 3)
                         unit_price = float(product['base_price'])
                         line_total = unit_price * quantity
                         
@@ -963,23 +970,31 @@ class PostgreSQLPopulator:
                               product['name']))
                         
                         order_item_count += 1
+                    
+                    # Commit every 1000 orders for performance
+                    if order_count % 1000 == 0:
+                        self.conn.commit()
+                        print(f"    Progress: {order_count:,} orders created...")
             
-            print(f"  {order_count} orders created")
-            print(f"  {order_item_count} order items created")
+            # Final commit
+            self.conn.commit()
+            print(f"  {order_count:,} orders created")
+            print(f"  {order_item_count:,} order items created")
             
             # 8. Create sample returns (for delivered orders)
             print("Creating sample returns...")
             
             return_count = 0
             
-            # Get delivered orders
-            cursor.execute("""
-                SELECT o.OrderID, o.OrderDate
+            # Get delivered orders (more for production scale)
+            limit = 50 if num_users >= 1000 else 10
+            cursor.execute(f"""
+                SELECT o.OrderID, o.OrderDate, o.UserID
                 FROM "Order" o
                 WHERE o.Status = 'delivered'
-                  AND o.UserID IN %s
-                LIMIT 10
-            """, (tuple(self.user_ids[:num_users]),))
+                ORDER BY o.OrderDate DESC
+                LIMIT {limit}
+            """)
             
             delivered_orders = cursor.fetchall()
             
@@ -996,8 +1011,11 @@ class PostgreSQLPopulator:
                     "Arrived too late"
                 ]
                 
-                # Create returns for some delivered orders
-                for order_id, order_date in delivered_orders[:5]:  # Only first 5
+                # Create returns for 30-50% of delivered orders
+                num_returns = int(len(delivered_orders) * random.uniform(0.3, 0.5))
+                orders_to_return = random.sample(delivered_orders, num_returns)
+                
+                for order_id, order_date, user_id in orders_to_return:
                     # Get items from this order
                     cursor.execute("""
                         SELECT OrderItemID, ItemID, Quantity, UnitPrice, ItemNameSnapshot
@@ -1034,7 +1052,6 @@ class PostgreSQLPopulator:
                     return_status, refund_status, has_approved, has_received, has_refunded = random.choice(status_options)
                     
                     # Dates
-                    # Return requested 5-15 days after delivery
                     days_after_delivery = random.randint(5, 15)
                     requested_at = order_date + timedelta(days=days_after_delivery)
                     
@@ -1062,10 +1079,9 @@ class PostgreSQLPopulator:
                     
                     return_count += 1
             
-            print(f"  {return_count} returns created")
-            
-            # Commit transaction
             self.conn.commit()
+            print(f"  {return_count:,} returns created")
+            
             print("PostgreSQL population complete!")
             
             return {
@@ -1073,7 +1089,8 @@ class PostgreSQLPopulator:
                 'address_ids': self.address_ids,
                 'category_ids': self.category_ids,
                 'item_ids': self.item_ids,
-                'products': products  # Return for MongoDB
+                'products': products,
+                'order_count': order_count
             }
             
         except Exception as e:
@@ -1093,9 +1110,12 @@ class MongoDBPopulator:
         self.db = db
         self.generator = generator
     
-    def populate(self, pg_data):
+    def populate(self, pg_data, config):
         """Populate MongoDB with test data"""
         print("\n=== Populating MongoDB ===")
+        
+        num_view_events = config['num_view_events']
+        num_search_events = config['num_search_events']
         
         # Clear existing data
         print("Clearing existing MongoDB collections...")
@@ -1116,14 +1136,14 @@ class MongoDBPopulator:
         
         if product_attrs:
             self.db.product_attributes.insert_many(product_attrs)
-            print(f"  {len(product_attrs)} product attributes inserted")
+            print(f"  {len(product_attrs):,} product attributes inserted")
         
-        # 2. Create sample user events (views, clicks, cart additions)
+        # 2. Create sample user events (SCALED FOR PRODUCTION)
         print("Inserting sample user events...")
         user_events = []
-        num_view_events = min(50, len(pg_data['user_ids']) * 5)
+        batch_size = 10000
         
-        for _ in range(num_view_events):
+        for i in range(num_view_events):
             event = {
                 'user_id': f"user_{random.choice(pg_data['user_ids'])}",
                 'session_id': f"sess_{fake.uuid4()[:8]}",
@@ -1132,14 +1152,27 @@ class MongoDBPopulator:
                     'product_id': f"item_{random.choice(pg_data['item_ids'])}",
                     'duration_seconds': random.randint(5, 120)
                 },
-                'timestamp': fake.date_time_between(start_date='-30d', end_date='now'),
+                'timestamp': fake.date_time_between(start_date='-365d', end_date='now'),
                 'device_type': random.choice(['laptop', 'mobile', 'tablet']),
                 'created_at': datetime.now()
             }
             user_events.append(event)
+            
+            # Insert in batches for performance
+            if len(user_events) >= batch_size:
+                self.db.user_events.insert_many(user_events)
+                print(f"    Progress: {i+1:,}/{num_view_events:,} view events created...")
+                user_events = []
         
-        # 3. Create search events
+        # Insert remaining events
+        if user_events:
+            self.db.user_events.insert_many(user_events)
+        
+        print(f"  {num_view_events:,} user events inserted")
+        
+        # 3. Create search events (SCALED FOR PRODUCTION)
         print("Inserting sample search events...")
+        
         search_terms = [
             'wireless headphones', 'bluetooth speaker', 'laptop', 'phone case',
             'summer dress', 'jeans', 'sneakers', 'jacket', 't-shirt',
@@ -1155,10 +1188,9 @@ class MongoDBPopulator:
             'evening': (18, 24, 0.4)   # 6 PM - 12 AM: 40%
         }
         
-        # Generate searches for each user
-        num_search_events = min(45, len(pg_data['user_ids']) * 5)
+        search_events = []
         
-        for _ in range(num_search_events):
+        for i in range(num_search_events):
             # Select time period based on weights
             time_period = random.choices(
                 list(time_weights.keys()),
@@ -1168,7 +1200,7 @@ class MongoDBPopulator:
             hour_min, hour_max, _ = time_weights[time_period]
             
             # Create timestamp with specific hour range
-            days_ago = random.randint(1, 30)
+            days_ago = random.randint(1, 365)
             search_time = datetime.now() - timedelta(
                 days=days_ago,
                 hours=24 - random.randint(hour_min, hour_max - 1),
@@ -1198,16 +1230,24 @@ class MongoDBPopulator:
                 'browser': random.choice(['Chrome', 'Firefox', 'Safari', 'Edge']),
                 'created_at': datetime.now()
             }
-            user_events.append(search_event)
+            search_events.append(search_event)
+            
+            # Insert in batches
+            if len(search_events) >= batch_size:
+                self.db.user_events.insert_many(search_events)
+                print(f"    Progress: {i+1:,}/{num_search_events:,} search events created...")
+                search_events = []
         
-        if user_events:
-            self.db.user_events.insert_many(user_events)
-            view_count = sum(1 for e in user_events if e['event_type'] in ['view', 'click', 'add_to_cart'])
-            search_count = sum(1 for e in user_events if e['event_type'] == 'search')
-            print(f"  {view_count} user events inserted (views, clicks, cart)")
-            print(f"  {search_count} search events inserted")
+        # Insert remaining
+        if search_events:
+            self.db.user_events.insert_many(search_events)
         
-        # 3. Create indexes
+        print(f"  {num_search_events:,} search events inserted")
+        
+        total_events = num_view_events + num_search_events
+        print(f"  TOTAL: {total_events:,} events in MongoDB")
+        
+        # 4. Create indexes
         print("Creating indexes...")
         self.db.product_attributes.create_index('product_id', unique=True)
         self.db.product_attributes.create_index('category')
@@ -1215,9 +1255,11 @@ class MongoDBPopulator:
         self.db.user_events.create_index([('event_type', 1), ('timestamp', -1)])
         print("  Indexes created")
         
+        print("MongoDB population complete!")
+        
         return {
             'product_attrs_count': len(product_attrs),
-            'user_events_count': len(user_events)
+            'user_events_count': total_events
         }
 
 
@@ -1231,13 +1273,14 @@ class RedisPopulator:
     def __init__(self, client):
         self.client = client
     
-    def populate(self, pg_data):
+    def populate(self, pg_data, config):
         """Populate Redis with test data"""
         print("\n=== Populating Redis ===")
         
+        view_cache_range = config['view_cache_per_user']
+        
         # Clear existing Redis data
         print("Clearing existing Redis keys...")
-        # Delete session keys
         for key in self.client.scan_iter("session:*"):
             self.client.delete(key)
         for key in self.client.scan_iter("user_sessions:*"):
@@ -1249,6 +1292,8 @@ class RedisPopulator:
         for key in self.client.scan_iter("active_cart:*"):
             self.client.delete(key)
         for key in self.client.scan_iter("hot_product:*"):
+            self.client.delete(key)
+        for key in self.client.scan_iter("recent_views:*"):
             self.client.delete(key)
         print("  Redis cleared")
         
@@ -1345,7 +1390,6 @@ class RedisPopulator:
             self.client.expire(f"cart:{user_id}:{session_token}", 604800)  # 7 days
             
             # Store cart items
-            import json
             for item in cart_items:
                 self.client.rpush(f"cart_items:{cart_id}", json.dumps(item))
             self.client.expire(f"cart_items:{cart_id}", 604800)  # 7 days
@@ -1355,10 +1399,65 @@ class RedisPopulator:
         
         print(f"  {cart_count} shopping carts created")
         
+        # 4. Cache recent views for each user (for Query 2)
+        print("Creating recent view cache...")
+        
+        view_cache_count = 0
+        
+        for idx, user_id in enumerate(pg_data['user_ids']):
+            redis_key = f"recent_views:{user_id}"
+            
+            # Generate views based on config
+            num_views = random.randint(view_cache_range[0], view_cache_range[1])
+            
+            for view_idx in range(num_views):
+                # Random product
+                product_idx = random.randint(0, len(pg_data['products']) - 1)
+                item_id = pg_data['item_ids'][product_idx]
+                
+                # Random view duration
+                duration = random.randint(5, 300)
+                
+                # Timestamp (most recent first)
+                days_ago = random.randint(0, 180)  # Past 6 months
+                hours_ago = random.randint(0, 23)
+                minutes_ago = random.randint(0, 59)
+                
+                view_time = datetime.now() - timedelta(
+                    days=days_ago,
+                    hours=hours_ago,
+                    minutes=minutes_ago
+                )
+                
+                # Member: "product_id:duration"
+                member = f"item_{item_id}:{duration}"
+                # Score: timestamp (for sorting by recency)
+                score = view_time.timestamp()
+                
+                # Add to sorted set
+                self.client.zadd(redis_key, {member: score})
+            
+            # Keep only most recent 10
+            self.client.zremrangebyrank(redis_key, 0, -11)
+            
+            # Set expiration (6 months)
+            self.client.expire(redis_key, 15552000)
+            
+            view_cache_count += 1
+            
+            # Progress indicator for large datasets
+            if (idx + 1) % 100 == 0:
+                print(f"    Progress: {idx+1:,}/{len(pg_data['user_ids']):,} users cached...")
+        
+        print(f"  {view_cache_count:,} user view caches created")
+        
+        print("Redis population complete!")
+        
         return {
             'sessions': session_count,
             'hot_products': hot_product_count,
-            'carts': cart_count
+            'carts': cart_count,
+            'view_caches': view_cache_count
         }
 
 
@@ -1399,10 +1498,10 @@ class Neo4jPopulator:
                     'name': f"User {uid}",
                     'created_at': datetime.now().isoformat()
                 }
-                for uid in pg_data['user_ids'][:10]  # First 10 users
+                for uid in pg_data['user_ids'][:min(100, len(pg_data['user_ids']))]  # First 100 users max
             ]
             session.run(user_query, users=users_data)
-            print(f"  {len(users_data)} User nodes created")
+            print(f"  {len(users_data):,} User nodes created")
             
             # 2. Create Product nodes
             print("Creating Product nodes...")
@@ -1423,10 +1522,10 @@ class Neo4jPopulator:
                     'category': pg_data['products'][idx]['category_type'],
                     'price': float(pg_data['products'][idx]['base_price'])
                 }
-                for idx, pid in enumerate(pg_data['item_ids'][:20])
+                for idx, pid in enumerate(pg_data['item_ids'][:min(500, len(pg_data['item_ids']))])  # First 500 products max
             ]
             session.run(product_query, products=products_data)
-            print(f"  {len(products_data)} Product nodes created")
+            print(f"  {len(products_data):,} Product nodes created")
             
             # 3. Create Category nodes
             print("Creating Category nodes...")
@@ -1455,6 +1554,8 @@ class Neo4jPopulator:
             session.run("CREATE CONSTRAINT category_id_unique IF NOT EXISTS FOR (c:Category) REQUIRE c.category_id IS UNIQUE")
             print("  Constraints created")
         
+        print("Neo4j population complete!")
+        
         return {
             'users': len(users_data),
             'products': len(products_data),
@@ -1469,18 +1570,39 @@ class Neo4jPopulator:
 def main():
     parser = argparse.ArgumentParser(description='Populate e-commerce databases')
     parser.add_argument('--test', action='store_true', help='Generate small test dataset')
-    parser.add_argument('--full', action='store_true', help='Generate full dataset')
+    parser.add_argument('--full', action='store_true', help='Generate full production dataset')
     parser.add_argument('--no-clear', action='store_true', help='Skip clearing existing data')
     args = parser.parse_args()
     
     if args.test:
-        num_users = 10
-        num_products = 20
-        print("Running in TEST mode (10 users, 20 products)")
+        config = {
+            'num_users': 10,
+            'num_products': 20,
+            'orders_per_user': (2, 3),        # 2-3 orders per user = ~25 total
+            'num_view_events': 50,            # 50 view/click/cart events
+            'num_search_events': 45,          # 45 search events
+            'view_cache_per_user': (5, 15)    # 5-15 cached views per user
+        }
+        print("=" * 60)
+        print("RUNNING IN TEST MODE")
+        print("=" * 60)
+        print("Scale: 10 users, 20 products, ~25 orders, ~95 events")
+        print()
     elif args.full:
-        num_users = 1000
-        num_products = 5000
-        print("Running in FULL mode (1000 users, 5000 products)")
+        config = {
+            'num_users': 1000,
+            'num_products': 5000,
+            'orders_per_user': (100, 115),     # 100-115 orders per user = ~100,000 total
+            'num_view_events': 400000,        # 400k view/click/cart events
+            'num_search_events': 100000,      # 100k search events
+            'view_cache_per_user': (50, 150)  # 50-150 cached views per user
+        }
+        print("=" * 60)
+        print("RUNNING IN FULL PRODUCTION MODE")
+        print("=" * 60)
+        print("Scale: 1000 users, 5000 products, ~100k orders, ~500k events")
+        print("Estimated time: 60-90 minutes")
+        print()
     else:
         print("Please specify --test or --full")
         sys.exit(1)
@@ -1504,15 +1626,15 @@ def main():
         
         # Populate PostgreSQL
         pg_populator = PostgreSQLPopulator(connections.pg_conn, generator)
-        pg_data = pg_populator.populate(num_users, num_products)
+        pg_data = pg_populator.populate(config)
         
         # Populate MongoDB
         mongo_populator = MongoDBPopulator(connections.mongo_db, generator)
-        mongo_data = mongo_populator.populate(pg_data)
+        mongo_data = mongo_populator.populate(pg_data, config)
         
         # Populate Redis
         redis_populator = RedisPopulator(connections.redis_client)
-        redis_data = redis_populator.populate(pg_data)
+        redis_data = redis_populator.populate(pg_data, config)
         
         # Populate Neo4j
         neo4j_populator = Neo4jPopulator(connections.neo4j_driver)
@@ -1523,25 +1645,38 @@ def main():
         print("\n" + "="*60)
         print("DATABASE POPULATION COMPLETE!")
         print("="*60)
-        print(f"PostgreSQL:")
-        print(f"  - Users: {len(pg_data['user_ids'])}")
-        print(f"  - Addresses: {len(pg_data['address_ids'])}")
-        print(f"  - Categories: {len(pg_data['category_ids'])}")
-        print(f"  - Items: {len(pg_data['item_ids'])}")
+        print(f"\nPostgreSQL:")
+        print(f"  - Users: {len(pg_data['user_ids']):,}")
+        print(f"  - Addresses: {len(pg_data['address_ids']):,}")
+        print(f"  - Categories: {len(pg_data['category_ids']):,}")
+        print(f"  - Items: {len(pg_data['item_ids']):,}")
+        print(f"  - Orders: {pg_data['order_count']:,}")
         print(f"\nMongoDB:")
-        print(f"  - Product attributes: {mongo_data['product_attrs_count']}")
-        print(f"  - User events: {mongo_data['user_events_count']}")
+        print(f"  - Product attributes: {mongo_data['product_attrs_count']:,}")
+        print(f"  - User events: {mongo_data['user_events_count']:,}")
         print(f"\nRedis:")
         print(f"  - Sessions: {redis_data['sessions']}")
         print(f"  - Hot products: {redis_data['hot_products']}")
+        print(f"  - Shopping carts: {redis_data['carts']}")
+        print(f"  - View caches: {redis_data['view_caches']:,}")
         print(f"\nNeo4j:")
-        print(f"  - User nodes: {neo4j_data['users']}")
-        print(f"  - Product nodes: {neo4j_data['products']}")
+        print(f"  - User nodes: {neo4j_data['users']:,}")
+        print(f"  - Product nodes: {neo4j_data['products']:,}")
         print(f"  - Category nodes: {neo4j_data['categories']}")
+        
+        print("\n" + "="*60)
+        print("SCALE VERIFICATION")
+        print("="*60)
+        if args.full:
+            print(f"Users: {len(pg_data['user_ids']):,} (>= 1,000)")
+            print(f"Products: {len(pg_data['item_ids']):,} (>= 5,000)")
+            print(f"Orders: {pg_data['order_count']:,} (>= 100,000)")
+            print(f"Events: {mongo_data['user_events_count']:,} (>= 500,000)")
+            print("\nProduction scale requirements met!")
         print("="*60)
         
     except Exception as e:
-        print(f"\n✗ Error: {e}")
+        print(f"\nError: {e}")
         import traceback
         traceback.print_exc()
     finally:

@@ -5,6 +5,7 @@ Query 6: User Search Analysis - Frequency and Time of Day
 import psycopg2
 import pymongo
 from datetime import datetime, timedelta
+from timing_utils import end_query_timer, start_query_timer
 
 # Connect
 pg_conn = psycopg2.connect(
@@ -18,6 +19,8 @@ mongo_db = mongo_client['ecommerce']
 print("="*80)
 print("QUERY 6: User Search Analysis - Frequency and Time of Day")
 print("="*80)
+
+query_start_time = start_query_timer()
 
 # ============================================================================
 # Get user
@@ -276,3 +279,4 @@ print("\n" + "="*80)
 cursor.close()
 pg_conn.close()
 mongo_client.close()
+end_query_timer(query_start_time, "Query 6")

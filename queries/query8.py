@@ -4,6 +4,7 @@ Query 8: Retrieve User's Orders with Complete Details
 
 import psycopg2
 from datetime import datetime
+from timing_utils import end_query_timer, start_query_timer
 
 # ============================================================================
 # DATABASE CONNECTION
@@ -20,6 +21,8 @@ pg_conn = psycopg2.connect(
 print("="*80)
 print("QUERY 8: User Orders - Complete Details")
 print("="*80)
+
+query_start_time = start_query_timer()
 
 # ============================================================================
 # STEP 1: Find the user
@@ -325,3 +328,4 @@ cursor.close()
 pg_conn.close()
 
 print("\nQuery complete!")
+end_query_timer(query_start_time, "Query 8")

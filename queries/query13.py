@@ -4,6 +4,7 @@ Query 13: Days Since Last Purchase & Order Count
 
 import psycopg2
 from datetime import datetime
+from timing_utils import end_query_timer, start_query_timer
 
 # Connect
 pg_conn = psycopg2.connect(
@@ -14,6 +15,8 @@ pg_conn = psycopg2.connect(
 print("="*80)
 print("QUERY 13: Days Since Last Purchase & Order Count")
 print("="*80)
+
+query_start_time = start_query_timer()
 
 cursor = pg_conn.cursor()
 
@@ -57,3 +60,4 @@ print("\n" + "="*80)
 # Clean up
 cursor.close()
 pg_conn.close()
+end_query_timer(query_start_time, "Query 13")

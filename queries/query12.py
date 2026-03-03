@@ -3,6 +3,7 @@ Query 12: Products Purchased Together with Headphones
 """
 
 import psycopg2
+from timing_utils import end_query_timer, start_query_timer
 
 # Connect
 pg_conn = psycopg2.connect(
@@ -13,6 +14,8 @@ pg_conn = psycopg2.connect(
 print("="*80)
 print("QUERY 12: Products Purchased Together with Headphones")
 print("="*80)
+
+query_start_time = start_query_timer()
 
 cursor = pg_conn.cursor()
 
@@ -30,7 +33,8 @@ if not headphone_products:
     print("\nNo headphones found in database")
     cursor.close()
     pg_conn.close()
-    exit(0)
+    end_query_timer(query_start_time, "Query 12")
+    raise SystemExit(0)
 
 print(f"\nHeadphone Product: {headphone_products[0][1]}")
 
@@ -83,3 +87,4 @@ print("\n" + "="*80)
 # Clean up
 cursor.close()
 pg_conn.close()
+end_query_timer(query_start_time, "Query 12")
