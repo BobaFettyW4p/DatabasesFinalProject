@@ -65,7 +65,7 @@ Changes Made:
 
 - Updated our existing ERD to account for the non-relational schema design:
   - each entity have been marked as being implemented in a specific database schema
-    - an entity implemented in MySQL is marked as being implemented in MySQL, a Neo4J is marked as being implemented in Neo4J, etc.
+    - an entity implemented in PostgreSQL is marked as being implemented in PostgreSQL, a Neo4J is marked as being implemented in Neo4J, etc.
 - added an additional diagram containing a high level view of all separate databases
   - each database is shown, along with all entities within it, as well as how those entities related to entities in other databases
 
@@ -74,5 +74,5 @@ Changes Made:
 Component: Broke diagrams into smaller pieces
 
 - Instead of having one large ERD, it is now broken up into multiple smaller diagrams for each database type. There is also a central diagram showing the relationships between each DB type.
-- Updated the Redis design to now sync with MySQL backend
+- Updated the Redis design to now sync with PostgreSQL backend
 - ItemAttribute is moved to MongoDB

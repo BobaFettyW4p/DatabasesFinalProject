@@ -29,7 +29,7 @@ erDiagram
     ItemVariation ||--o{ ShoppingCartItem : "specific variant in cart"
 
     %% ═══════════════════════════════════════════════════════════
-    %% SHOPPING CART (MySQL Backup)
+    %% SHOPPING CART (PostgreSQL Backup)
     %% ═══════════════════════════════════════════════════════════
 
     ShoppingCart ||--o{ ShoppingCartItem : "contains"

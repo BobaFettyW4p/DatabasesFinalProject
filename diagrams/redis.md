@@ -13,7 +13,7 @@ graph TB
         TP[trending_products]
     end
     
-    subgraph "References MySQL"
+    subgraph "References PostgreSQL"
         M_User2[User]
         M_Item2[Item]
     end

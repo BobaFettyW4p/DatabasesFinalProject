@@ -9,7 +9,7 @@ graph TB
         UP[user_profiles]
     end
     
-    subgraph "References MySQL"
+    subgraph "References PostgreSQL"
         M_Item[Item]
         M_User[User]
         M_Category[Category]

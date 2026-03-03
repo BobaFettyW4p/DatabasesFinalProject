@@ -2,7 +2,7 @@
 
 ```mermaid
 graph TB
-    subgraph MYSQL["MySQL (PostgreSQL)"]
+    subgraph PostgreSQL[" (PostgreSQL)"]
         direction TB
         M_User["User<br/>UserID, Email, Name"]
         M_Item["Item<br/>ItemID, Name, Price"]
@@ -43,7 +43,7 @@ graph TB
     end
 
     %% ═══════════════════════════════════════════════════════════
-    %% Redis -> MySQL (Application References)
+    %% Redis -> PostgreSQL (Application References)
     %% ═══════════════════════════════════════════════════════════
 
     R_Session -.->|"UserID<br/>(nullable)"| M_User
@@ -52,14 +52,14 @@ graph TB
     R_CartItems -.->|"VariationID"| M_ItemVariation
 
     %% ═══════════════════════════════════════════════════════════
-    %% Redis -> MySQL (Sync Jobs - Data Flow)
+    %% Redis -> PostgreSQL (Sync Jobs - Data Flow)
     %% ═══════════════════════════════════════════════════════════
 
     R_Cart -->|"Sync every 5min"| M_ShoppingCart
     R_CartItems -->|"Sync every 5min"| M_ShoppingCart
 
     %% ═══════════════════════════════════════════════════════════
-    %% MongoDB -> MySQL (Application References)
+    %% MongoDB -> PostgreSQL (Application References)
     %% ═══════════════════════════════════════════════════════════
 
     MG_ProductAttrs -.->|"product_id"| M_Item
@@ -83,7 +83,7 @@ graph TB
     MG_Events -->|"Aggregate<br/>every 6hrs"| MG_Profile
 
     %% ═══════════════════════════════════════════════════════════
-    %% Neo4j -> MySQL (Sync Jobs - Data Flow)
+    %% Neo4j -> PostgreSQL (Sync Jobs - Data Flow)
     %% ═══════════════════════════════════════════════════════════
 
     N_User -.->|"Synced hourly"| M_User
@@ -101,12 +101,12 @@ graph TB
     %% Styling
     %% ═══════════════════════════════════════════════════════════
 
-    classDef mysqlStyle fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,color:#000
+    classDef PostgreSQLStyle fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,color:#000
     classDef redisStyle fill:#ffebee,stroke:#d32f2f,stroke-width:3px,color:#000
     classDef mongoStyle fill:#e8f5e9,stroke:#388e3c,stroke-width:3px,color:#000
     classDef neoStyle fill:#fff3e0,stroke:#f57c00,stroke-width:3px,color:#000
 
-    class M_User,M_Item,M_Category,M_ItemVariation,M_Order,M_OrderItem,M_Address,M_PaymentMethod,M_ShoppingCart,M_ReturnItem mysqlStyle
+    class M_User,M_Item,M_Category,M_ItemVariation,M_Order,M_OrderItem,M_Address,M_PaymentMethod,M_ShoppingCart,M_ReturnItem PostgreSQLStyle
     class R_Session,R_Cart,R_CartItems,R_HotProducts,R_RecentViews,R_Trending redisStyle
     class MG_ProductAttrs,MG_Events,MG_Search,MG_Profile mongoStyle
     class N_User,N_Product,N_Category,N_Relationships neoStyle

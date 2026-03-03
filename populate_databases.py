@@ -656,7 +656,7 @@ def create_postgresql_schema(conn):
         print("Creating tables...")
         cursor.execute(schema_sql)
         
-        # Add User → Address foreign key if it doesn't exist
+        # Add User -> Address foreign key if it doesn't exist
         print("Adding constraints...")
         cursor.execute("""
             DO $$ 

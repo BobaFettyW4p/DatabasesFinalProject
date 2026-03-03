@@ -23,7 +23,7 @@ graph LR
 ```cypher
 Node: User
 (:User {
-  user_id: String,             // MySQL User.UserID
+  user_id: String,             // PostgreSQL User.UserID
   name: String,
   total_orders: Number,
   synced_at: DateTime
@@ -32,7 +32,7 @@ Node: User
 // Constraint: user_id (unique)
 Node: Product
 (:Product {
-  product_id: String,          // MySQL Item.ItemID
+  product_id: String,          // PostgreSQL Item.ItemID
   name: String,
   category: String,
   price: Decimal,
@@ -43,7 +43,7 @@ Node: Product
 // Constraint: product_id (unique)
 Node: Category
 (:Category {
-  category_id: String,         // MySQL Category.CategoryID
+  category_id: String,         // PostgreSQL Category.CategoryID
   name: String,
   synced_at: DateTime
 })
